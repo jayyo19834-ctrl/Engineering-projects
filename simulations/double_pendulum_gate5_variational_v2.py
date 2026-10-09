@@ -1,29 +1,33 @@
 # ============================================================
-# GATE 5B — DOUBLE PENDULUM VARIATIONAL LYAPUNOV VALIDATION
-# OPTIMIZED ANALYTIC-JACOBIAN EXECUTION
+# GATE 5B REVISION 2
+# DOUBLE PENDULUM VARIATIONAL LYAPUNOV VALIDATION
 # ============================================================
 #
-# STATUS / PROVENANCE
+# PROVENANCE
 #
-# Gate 5:
-#   Frozen complex-step variational implementation.
-#   Execution incomplete because of runtime/resource limit.
-#   Gate 5 remains unchanged.
+# Previous Gate 5B blob:
+# 027a1352a277fe6d5a920f152969dfea5fd51d9f
 #
-# Gate 5B:
-#   Execution-optimized implementation using an analytic
-#   Jacobian of the SAME double-pendulum vector field.
+# Status of previous blob:
+# INVALID / INCOMPLETE IMPLEMENTATION SNAPSHOT.
+# The committed file ended inside jacobian_analytic().
+# It was never scientifically executed.
 #
-# IMPORTANT:
-# Before any Lyapunov calculation is accepted, the analytic
-# Jacobian must agree with the frozen complex-step Jacobian
-# at predefined validation states.
+# This revision preserves the intended Gate 5B method and all
+# frozen scientific acceptance criteria.
 #
-# The physical model, initial condition, integrator,
-# tolerances, convergence times, renormalization intervals,
-# Gate 3B reference, and acceptance criteria are unchanged.
+# METHOD
+# - Same double-pendulum vector field as Gate 5
+# - Tangent-space variational dynamics
+# - Analytic Jacobian for production integration
+# - Complex-step Jacobian used as independent implementation
+#   cross-check before Lyapunov execution
+# - DOP853
+# - rtol = 1e-10
+# - atol = 1e-12
 #
-# Do not change acceptance criteria after execution.
+# IMPORTANT
+# Do not change acceptance criteria after seeing results.
 # ============================================================
 
 import numpy as np
@@ -32,14 +36,12 @@ from time import perf_counter
 
 
 # ============================================================
-# PHYSICAL PARAMETERS
+# PHYSICAL MODEL
 # ============================================================
 
 G = 9.81
-
 M1 = 1.0
 M2 = 1.0
-
 L1 = 1.0
 L2 = 1.0
 
@@ -51,47 +53,22 @@ L2 = 1.0
 RTOL = 1e-10
 ATOL = 1e-12
 
-TOTAL_TIMES = [
-    20.0,
-    40.0,
-    80.0,
-    160.0,
-]
+TOTAL_TIMES = [20.0, 40.0, 80.0, 160.0]
 
-RENORM_INTERVALS = [
-    0.025,
-    0.050,
-    0.100,
-]
-
-
-# ============================================================
-# FROZEN COMPLEX-STEP SETTING
-# ============================================================
+RENORM_INTERVALS = [0.025, 0.050, 0.100]
 
 COMPLEX_STEP = 1e-20
 
 
 # ============================================================
-# JACOBIAN VALIDATION THRESHOLD
-# ============================================================
-#
-# This criterion is defined before execution.
-#
-# The analytic Jacobian must agree with complex-step to:
-#
-#     max absolute element error <= 1e-10
-#
-# at every predefined validation state.
-#
-# Failure blocks Gate 5B execution.
+# FROZEN JACOBIAN VALIDATION CRITERION
 # ============================================================
 
 JACOBIAN_MAX_ABS_ERROR = 1e-10
 
 
 # ============================================================
-# FROZEN GATE 5 / GATE 3B ACCEPTANCE CRITERIA
+# FROZEN GATE 5B ACCEPTANCE CRITERIA
 # ============================================================
 
 GATE3B_REFERENCE = 1.244525852944515
@@ -104,163 +81,89 @@ MAX_RELATIVE_DIFFERENCE_PERCENT = 25.0
 
 
 # ============================================================
-# INITIAL CONDITION
+# INITIAL CONDITIONS
 # ============================================================
 
 INITIAL_STATE = np.array(
-    [
-        0.9 * np.pi,
-        0.0,
-        0.9 * np.pi,
-        0.0,
-    ],
-    dtype=float
+    [0.9 * np.pi, 0.0, 0.9 * np.pi, 0.0],
+    dtype=float,
 )
 
-
-# ============================================================
-# INITIAL TANGENT VECTOR
-# ============================================================
-
 INITIAL_TANGENT = np.array(
-    [
-        1.0,
-        0.0,
-        0.0,
-        0.0,
-    ],
-    dtype=float
+    [1.0, 0.0, 0.0, 0.0],
+    dtype=float,
 )
 
 
 # ============================================================
 # DOUBLE-PENDULUM VECTOR FIELD
 # ============================================================
-#
-# State:
-#
-# [theta1, omega1, theta2, omega2]
-#
-# This is the SAME vector field used by frozen Gate 5.
-#
-# Do not cast to float inside this function because the
-# complex-step validation requires complex arithmetic.
-# ============================================================
 
 def pendulum_deriv(state):
 
-    theta1, omega1, theta2, omega2 = state
+    t1, w1, t2, w2 = state
 
-    delta = theta1 - theta2
+    d = t1 - t2
 
     D = (
         2.0 * M1
         + M2
-        - M2 * np.cos(2.0 * delta)
+        - M2 * np.cos(2.0 * d)
     )
-
-    denominator1 = L1 * D
-    denominator2 = L2 * D
 
     Q = (
-        omega2**2 * L2
-        + omega1**2 * L1 * np.cos(delta)
+        w2**2 * L2
+        + w1**2 * L1 * np.cos(d)
     )
 
-    numerator1 = (
-        -G
-        * (2.0 * M1 + M2)
-        * np.sin(theta1)
-
-        - M2
-        * G
-        * np.sin(theta1 - 2.0 * theta2)
-
-        - 2.0
-        * M2
-        * np.sin(delta)
-        * Q
+    N1 = (
+        -G * (2.0 * M1 + M2) * np.sin(t1)
+        - M2 * G * np.sin(t1 - 2.0 * t2)
+        - 2.0 * M2 * np.sin(d) * Q
     )
 
     R = (
-        omega1**2
-        * L1
-        * (M1 + M2)
-
-        + G
-        * (M1 + M2)
-        * np.cos(theta1)
-
-        + omega2**2
-        * L2
-        * M2
-        * np.cos(delta)
+        w1**2 * L1 * (M1 + M2)
+        + G * (M1 + M2) * np.cos(t1)
+        + w2**2 * L2 * M2 * np.cos(d)
     )
 
-    numerator2 = (
-        2.0
-        * np.sin(delta)
-        * R
-    )
-
-    domega1 = (
-        numerator1
-        / denominator1
-    )
-
-    domega2 = (
-        numerator2
-        / denominator2
+    N2 = (
+        2.0 * np.sin(d) * R
     )
 
     return np.array(
         [
-            omega1,
-            domega1,
-            omega2,
-            domega2,
+            w1,
+            N1 / (L1 * D),
+            w2,
+            N2 / (L2 * D),
         ]
     )
 
 
 # ============================================================
-# FROZEN COMPLEX-STEP JACOBIAN
+# COMPLEX-STEP JACOBIAN
 # ============================================================
 #
-# Used ONLY for validation in Gate 5B.
-# It is not used during the production Lyapunov integrations.
+# This reproduces the Gate 5 Jacobian method and is used here
+# only to validate the analytic implementation.
 # ============================================================
 
 def jacobian_complex_step(state):
 
-    state = np.asarray(
-        state,
-        dtype=float
-    )
+    x = np.asarray(state, dtype=float)
 
-    dimension = len(state)
+    J = np.zeros((4, 4), dtype=float)
 
-    J = np.zeros(
-        (dimension, dimension),
-        dtype=float
-    )
+    for j in range(4):
 
-    for column in range(dimension):
+        z = x.astype(complex)
 
-        complex_state = state.astype(
-            complex
-        )
+        z[j] += 1j * COMPLEX_STEP
 
-        complex_state[column] += (
-            1j * COMPLEX_STEP
-        )
-
-        derivative = pendulum_deriv(
-            complex_state
-        )
-
-        J[:, column] = (
-            np.imag(derivative)
+        J[:, j] = (
+            np.imag(pendulum_deriv(z))
             / COMPLEX_STEP
         )
 
@@ -270,118 +173,148 @@ def jacobian_complex_step(state):
 # ============================================================
 # ANALYTIC JACOBIAN
 # ============================================================
-#
-# The derivatives below are algebraic derivatives of the
-# exact same vector field defined above.
-#
-# Jacobian ordering:
-#
-# rows:
-#   theta1_dot
-#   omega1_dot
-#   theta2_dot
-#   omega2_dot
-#
-# columns:
-#   theta1
-#   omega1
-#   theta2
-#   omega2
-# ============================================================
 
 def jacobian_analytic(state):
 
-    theta1, omega1, theta2, omega2 = state
+    t1, w1, t2, w2 = state
 
-    delta = theta1 - theta2
+    d = t1 - t2
 
-    sin_d = np.sin(delta)
-    cos_d = np.cos(delta)
-
-    sin_2d = np.sin(2.0 * delta)
+    sd = np.sin(d)
+    cd = np.cos(d)
+    s2d = np.sin(2.0 * d)
 
     D = (
         2.0 * M1
         + M2
-        - M2 * np.cos(2.0 * delta)
+        - M2 * np.cos(2.0 * d)
     )
 
-    # --------------------------------------------------------
-    # Derivatives of D
-    # --------------------------------------------------------
-
-    dD_dt1 = (
-        2.0
-        * M2
-        * sin_2d
-    )
-
-    dD_dt2 = (
-        -2.0
-        * M2
-        * sin_2d
-    )
+    dD_t1 = 2.0 * M2 * s2d
+    dD_t2 = -dD_t1
 
     # --------------------------------------------------------
-    # Q for omega1_dot numerator
+    # First angular-acceleration numerator
     # --------------------------------------------------------
 
     Q = (
-        omega2**2 * L2
-        + omega1**2 * L1 * cos_d
+        w2**2 * L2
+        + w1**2 * L1 * cd
     )
 
-    dQ_dt1 = (
-        -omega1**2
-        * L1
-        * sin_d
-    )
+    dQ_t1 = -w1**2 * L1 * sd
+    dQ_t2 = +w1**2 * L1 * sd
 
-    dQ_dt2 = (
-        omega1**2
-        * L1
-        * sin_d
-    )
-
-    dQ_dw1 = (
-        2.0
-        * omega1
-        * L1
-        * cos_d
-    )
-
-    dQ_dw2 = (
-        2.0
-        * omega2
-        * L2
-    )
-
-    # --------------------------------------------------------
-    # Numerator N1
-    # --------------------------------------------------------
+    dQ_w1 = 2.0 * w1 * L1 * cd
+    dQ_w2 = 2.0 * w2 * L2
 
     N1 = (
-        -G
-        * (2.0 * M1 + M2)
-        * np.sin(theta1)
-
-        - M2
-        * G
-        * np.sin(theta1 - 2.0 * theta2)
-
-        - 2.0
-        * M2
-        * sin_d
-        * Q
+        -G * (2.0 * M1 + M2) * np.sin(t1)
+        - M2 * G * np.sin(t1 - 2.0 * t2)
+        - 2.0 * M2 * sd * Q
     )
 
-    dN1_dt1 = (
-        -G
-        * (2.0 * M1 + M2)
-        * np.cos(theta1)
+    dN1_t1 = (
+        -G * (2.0 * M1 + M2) * np.cos(t1)
+        - M2 * G * np.cos(t1 - 2.0 * t2)
+        - 2.0 * M2 * (
+            cd * Q
+            + sd * dQ_t1
+        )
+    )
 
-        - M2
-        * G
-        * np.cos(theta1 - 2.0 * theta2)
+    dN1_t2 = (
+        2.0 * M2 * G * np.cos(t1 - 2.0 * t2)
+        - 2.0 * M2 * (
+            -cd * Q
+            + sd * dQ_t2
+        )
+    )
 
-        - 
+    dN1_w1 = (
+        -2.0 * M2 * sd * dQ_w1
+    )
+
+    dN1_w2 = (
+        -2.0 * M2 * sd * dQ_w2
+    )
+
+    # --------------------------------------------------------
+    # Second angular-acceleration numerator
+    # --------------------------------------------------------
+
+    R = (
+        w1**2 * L1 * (M1 + M2)
+        + G * (M1 + M2) * np.cos(t1)
+        + w2**2 * L2 * M2 * cd
+    )
+
+    dR_t1 = (
+        -G * (M1 + M2) * np.sin(t1)
+        - w2**2 * L2 * M2 * sd
+    )
+
+    dR_t2 = (
+        w2**2 * L2 * M2 * sd
+    )
+
+    dR_w1 = (
+        2.0 * w1 * L1 * (M1 + M2)
+    )
+
+    dR_w2 = (
+        2.0 * w2 * L2 * M2 * cd
+    )
+
+    N2 = 2.0 * sd * R
+
+    dN2_t1 = (
+        2.0 * (
+            cd * R
+            + sd * dR_t1
+        )
+    )
+
+    dN2_t2 = (
+        2.0 * (
+            -cd * R
+            + sd * dR_t2
+        )
+    )
+
+    dN2_w1 = (
+        2.0 * sd * dR_w1
+    )
+
+    dN2_w2 = (
+        2.0 * sd * dR_w2
+    )
+
+    # --------------------------------------------------------
+    # Quotient rule
+    # --------------------------------------------------------
+
+    D2 = D**2
+
+    a1_t1 = (
+        dN1_t1 * D
+        - N1 * dD_t1
+    ) / (L1 * D2)
+
+    a1_t2 = (
+        dN1_t2 * D
+        - N1 * dD_t2
+    ) / (L1 * D2)
+
+    a1_w1 = dN1_w1 / (L1 * D)
+    a1_w2 = dN1_w2 / (L1 * D)
+
+    a2_t1 = (
+        dN2_t1 * D
+        - N2 * dD_t1
+    ) / (L2 * D2)
+
+    a2_t2 = (
+        dN2_t2 * D
+        - N2 * dD_t2
+    ) / (L
