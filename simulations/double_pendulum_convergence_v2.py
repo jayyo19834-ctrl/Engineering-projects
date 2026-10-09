@@ -7,11 +7,10 @@ from time import perf_counter
 #
 # Gate 3B
 #
-# Same convergence question as Gate 3, but reference and
-# perturbed trajectories are integrated simultaneously as
-# one 8-state system.
+# Reference and perturbed trajectories are integrated
+# simultaneously as one 8-state system.
 #
-# Tests:
+# Tests sensitivity to:
 #   1. Total integration time
 #   2. Initial perturbation magnitude
 #   3. Renormalization interval
@@ -20,68 +19,140 @@ from time import perf_counter
 #   - High-energy exponent remains positive and converges.
 #   - Low-energy control trends toward zero.
 #   - Results become insensitive to delta0 and dt_renorm.
+#
+# IMPORTANT:
+# The final PASS/INCONCLUSIVE/FAIL result refers only to
+# the predefined Gate 3B numerical criteria.
+# It is NOT, by itself, mathematical proof of asymptotic chaos.
+# ============================================================
+
+
+# ============================================================
+# PHYSICAL PARAMETERS
 # ============================================================
 
 g = 9.81
+
 m1 = 1.0
 m2 = 1.0
+
 L1 = 1.0
 L2 = 1.0
 
 
+# ============================================================
+# DOUBLE-PENDULUM EQUATIONS
+# ============================================================
+
 def pendulum_deriv(y):
+
     th1, w1, th2, w2 = y
+
     delta = th1 - th2
 
     den = (
-        2 * m1 + m2
-        - m2 * np.cos(2 * th1 - 2 * th2)
+        2 * m1
+        + m2
+        - m2 * np.cos(
+            2 * th1 - 2 * th2
+        )
     )
 
     dw1 = (
-        -g * (2 * m1 + m2) * np.sin(th1)
-        - m2 * g * np.sin(th1 - 2 * th2)
-        - 2 * np.sin(delta) * m2
+        -g
+        * (2 * m1 + m2)
+        * np.sin(th1)
+
+        - m2
+        * g
+        * np.sin(
+            th1 - 2 * th2
+        )
+
+        - 2
+        * np.sin(delta)
+        * m2
         * (
             w2**2 * L2
-            + w1**2 * L1 * np.cos(delta)
+            + w1**2
+            * L1
+            * np.cos(delta)
         )
-    ) / (L1 * den)
+    ) / (
+        L1 * den
+    )
 
     dw2 = (
-        2 * np.sin(delta)
+        2
+        * np.sin(delta)
         * (
-            w1**2 * L1 * (m1 + m2)
-            + g * (m1 + m2) * np.cos(th1)
-            + w2**2 * L2 * m2 * np.cos(delta)
+            w1**2
+            * L1
+            * (m1 + m2)
+
+            + g
+            * (m1 + m2)
+            * np.cos(th1)
+
+            + w2**2
+            * L2
+            * m2
+            * np.cos(delta)
         )
-    ) / (L2 * den)
+    ) / (
+        L2 * den
+    )
 
     return np.array(
-        [w1, dw1, w2, dw2]
+        [
+            w1,
+            dw1,
+            w2,
+            dw2,
+        ]
     )
 
 
+# ============================================================
+# COMBINED 8-STATE SYSTEM
+# ============================================================
+
 def combined_deriv(t, y):
+
     reference = y[:4]
     nearby = y[4:]
 
+    reference_deriv = (
+        pendulum_deriv(reference)
+    )
+
+    nearby_deriv = (
+        pendulum_deriv(nearby)
+    )
+
     return np.concatenate(
         (
-            pendulum_deriv(reference),
-            pendulum_deriv(nearby),
+            reference_deriv,
+            nearby_deriv,
         )
     )
 
 
+# ============================================================
+# STATE DIFFERENCE
+# ============================================================
+
 def wrapped_difference(a, b):
+
     d = a - b
 
+    # Wrap theta1 difference to [-pi, pi].
     d[0] = np.arctan2(
         np.sin(d[0]),
         np.cos(d[0]),
     )
 
+    # Wrap theta2 difference to [-pi, pi].
     d[2] = np.arctan2(
         np.sin(d[2]),
         np.cos(d[2]),
@@ -90,37 +161,57 @@ def wrapped_difference(a, b):
     return d
 
 
+# ============================================================
+# LYAPUNOV ESTIMATOR
+# ============================================================
+
 def lyapunov_estimate(
     initial_state,
     delta0,
     dt_renorm,
     total_time,
 ):
+
     reference = np.array(
         initial_state,
         dtype=float,
     )
 
     nearby = reference.copy()
+
+    # Initial perturbation is applied to theta1.
     nearby[0] += delta0
 
     t = 0.0
+
     log_growth_sum = 0.0
 
-    while t < total_time - 1e-12:
+
+    while (
+        t
+        < total_time - 1e-12
+    ):
 
         t_next = min(
             t + dt_renorm,
             total_time,
         )
 
-        combined_state = np.concatenate(
-            (reference, nearby)
+        combined_state = (
+            np.concatenate(
+                (
+                    reference,
+                    nearby,
+                )
+            )
         )
 
         sol = solve_ivp(
             combined_deriv,
-            (t, t_next),
+            (
+                t,
+                t_next,
+            ),
             combined_state,
             rtol=1e-10,
             atol=1e-12,
@@ -128,36 +219,62 @@ def lyapunov_estimate(
         )
 
         if not sol.success:
-            raise RuntimeError(sol.message)
 
-        reference = sol.y[:4, -1]
-        nearby_end = sol.y[4:, -1]
+            raise RuntimeError(
+                sol.message
+            )
 
-        difference = wrapped_difference(
-            nearby_end.copy(),
-            reference.copy(),
+
+        reference = (
+            sol.y[:4, -1]
         )
 
-        distance = np.linalg.norm(
-            difference
+        nearby_end = (
+            sol.y[4:, -1]
         )
 
-        if not np.isfinite(distance):
+
+        difference = (
+            wrapped_difference(
+                nearby_end.copy(),
+                reference.copy(),
+            )
+        )
+
+
+        distance = (
+            np.linalg.norm(
+                difference
+            )
+        )
+
+
+        if not np.isfinite(
+            distance
+        ):
+
             raise RuntimeError(
                 "Non-finite trajectory separation."
             )
 
+
         if distance <= 0.0:
+
             raise RuntimeError(
                 "Trajectory separation collapsed to zero."
             )
+
 
         growth = np.log(
             distance / delta0
         )
 
-        log_growth_sum += growth
+        log_growth_sum += (
+            growth
+        )
 
+
+        # Renormalize the perturbation.
         direction = (
             difference / distance
         )
@@ -167,14 +284,21 @@ def lyapunov_estimate(
             + delta0 * direction
         )
 
+
         t = t_next
 
-    return log_growth_sum / total_time
+
+    return (
+        log_growth_sum
+        / total_time
+    )
 
 
 # ============================================================
 # INITIAL CONDITIONS
 # ============================================================
+
+# High-energy candidate chaotic state.
 
 high_energy_state = [
     0.9 * np.pi,
@@ -182,6 +306,9 @@ high_energy_state = [
     0.9 * np.pi,
     0.0,
 ]
+
+
+# Low-energy regular control.
 
 low_energy_state = [
     0.10,
@@ -202,11 +329,13 @@ times = [
     160.0,
 ]
 
+
 delta_values = [
     1e-6,
     1e-8,
     1e-10,
 ]
+
 
 renorm_values = [
     0.025,
@@ -215,23 +344,39 @@ renorm_values = [
 ]
 
 
-print("=" * 78)
+# ============================================================
+# RUN CONVERGENCE SWEEP
+# ============================================================
+
 print(
-    "DOUBLE PENDULUM — LYAPUNOV CONVERGENCE GATE 3B"
+    "=" * 78
 )
-print("=" * 78)
+
+print(
+    "DOUBLE PENDULUM — "
+    "LYAPUNOV CONVERGENCE GATE 3B"
+)
+
+print(
+    "=" * 78
+)
 
 print(
     "time | delta0 | renorm | "
-    "high exponent | low exponent"
+    "high exponent | low exponent | runtime"
 )
 
-print("-" * 78)
+print(
+    "-" * 78
+)
 
 
 results = []
 
-start_clock = perf_counter()
+
+start_clock = (
+    perf_counter()
+)
 
 
 for total_time in times:
@@ -240,26 +385,36 @@ for total_time in times:
 
         for dt_renorm in renorm_values:
 
-            case_start = perf_counter()
-
-            high = lyapunov_estimate(
-                high_energy_state,
-                delta0,
-                dt_renorm,
-                total_time,
+            case_start = (
+                perf_counter()
             )
 
-            low = lyapunov_estimate(
-                low_energy_state,
-                delta0,
-                dt_renorm,
-                total_time,
+
+            high = (
+                lyapunov_estimate(
+                    high_energy_state,
+                    delta0,
+                    dt_renorm,
+                    total_time,
+                )
             )
+
+
+            low = (
+                lyapunov_estimate(
+                    low_energy_state,
+                    delta0,
+                    dt_renorm,
+                    total_time,
+                )
+            )
+
 
             runtime = (
                 perf_counter()
                 - case_start
             )
+
 
             results.append(
                 (
@@ -271,6 +426,7 @@ for total_time in times:
                     runtime,
                 )
             )
+
 
             print(
                 f"{total_time:5.0f} | "
@@ -293,9 +449,18 @@ total_runtime = (
 # ============================================================
 
 print()
-print("=" * 78)
-print("SUMMARY BY TOTAL TIME")
-print("=" * 78)
+
+print(
+    "=" * 78
+)
+
+print(
+    "SUMMARY BY TOTAL TIME"
+)
+
+print(
+    "=" * 78
+)
 
 
 for total_time in times:
@@ -306,19 +471,30 @@ for total_time in times:
         if row[0] == total_time
     ]
 
+
     high_values = np.array(
-        [row[3] for row in subset]
+        [
+            row[3]
+            for row in subset
+        ]
     )
+
 
     low_values = np.array(
-        [row[4] for row in subset]
+        [
+            row[4]
+            for row in subset
+        ]
     )
 
+
     print()
+
     print(
         f"Integration time: "
         f"{total_time:.0f} s"
     )
+
 
     print(
         "  HIGH:"
@@ -327,6 +503,7 @@ for total_time in times:
         f" min={np.min(high_values):.6f},"
         f" max={np.max(high_values):.6f}"
     )
+
 
     print(
         "  LOW: "
@@ -341,7 +518,10 @@ for total_time in times:
 # LONGEST-RUN CONVERGENCE DIAGNOSTIC
 # ============================================================
 
-max_time = max(times)
+max_time = max(
+    times
+)
+
 
 longest = [
     row
@@ -349,41 +529,73 @@ longest = [
     if row[0] == max_time
 ]
 
+
 high_long = np.array(
-    [row[3] for row in longest]
+    [
+        row[3]
+        for row in longest
+    ]
 )
+
 
 low_long = np.array(
-    [row[4] for row in longest]
+    [
+        row[4]
+        for row in longest
+    ]
 )
 
 
-high_mean = np.mean(high_long)
-high_std = np.std(high_long)
+high_mean = np.mean(
+    high_long
+)
 
-low_mean = np.mean(low_long)
-low_std = np.std(low_long)
+high_std = np.std(
+    high_long
+)
+
+
+low_mean = np.mean(
+    low_long
+)
+
+low_std = np.std(
+    low_long
+)
 
 
 print()
-print("=" * 78)
-print("LONGEST-RUN DIAGNOSTIC")
-print("=" * 78)
+
+print(
+    "=" * 78
+)
+
+print(
+    "LONGEST-RUN DIAGNOSTIC"
+)
+
+print(
+    "=" * 78
+)
+
 
 print(
     f"High-energy mean: "
     f"{high_mean:.6f} 1/s"
 )
 
+
 print(
     f"High-energy std:  "
     f"{high_std:.6f} 1/s"
 )
 
+
 print(
     f"Low-energy mean:  "
     f"{low_mean:.6f} 1/s"
 )
+
 
 print(
     f"Low-energy std:   "
@@ -405,13 +617,22 @@ if high_mean != 0.0:
 
 
 # ============================================================
-# TIME TREND
+# MEAN EXPONENT TREND
 # ============================================================
 
 print()
-print("=" * 78)
-print("MEAN EXPONENT TREND")
-print("=" * 78)
+
+print(
+    "=" * 78
+)
+
+print(
+    "MEAN EXPONENT TREND"
+)
+
+print(
+    "=" * 78
+)
 
 
 for total_time in times:
@@ -422,13 +643,22 @@ for total_time in times:
         if row[0] == total_time
     ]
 
+
     high_values = np.array(
-        [row[3] for row in subset]
+        [
+            row[3]
+            for row in subset
+        ]
     )
 
+
     low_values = np.array(
-        [row[4] for row in subset]
+        [
+            row[4]
+            for row in subset
+        ]
     )
+
 
     print(
         f"{total_time:5.0f} s : "
@@ -437,10 +667,24 @@ for total_time in times:
     )
 
 
+# ============================================================
+# RUNTIME
+# ============================================================
+
 print()
-print("=" * 78)
-print("RUNTIME")
-print("=" * 78)
+
+print(
+    "=" * 78
+)
+
+print(
+    "RUNTIME"
+)
+
+print(
+    "=" * 78
+)
+
 
 print(
     f"Total sweep runtime: "
@@ -448,24 +692,128 @@ print(
 )
 
 
+# ============================================================
+# SCIENTIFIC INTERPRETATION
+# ============================================================
+
 print()
-print("GATE 3B INTERPRETATION:")
+
+print(
+    "GATE 3B INTERPRETATION:"
+)
+
+
 print(
     "Strong convergence requires the high-energy "
     "estimate to remain positive and become relatively "
     "insensitive to delta0 and renormalization interval."
 )
 
+
 print(
     "The low-energy control should move toward zero "
     "as total integration time increases."
 )
 
+
+# ============================================================
+# GATE 3B VERDICT
+# ============================================================
+#
+# IMPORTANT:
+#
+# These thresholds are experiment-specific gate criteria.
+# They are NOT universal mathematical definitions of chaos.
+#
+# The verdict describes whether this numerical gate passed.
+# It does not by itself constitute proof of asymptotic chaos.
+# ============================================================
+
+HIGH_EXPONENT_THRESHOLD = 0.5
+
+LOW_CONTROL_THRESHOLD = 0.1
+
+
+if (
+    high_mean
+    > HIGH_EXPONENT_THRESHOLD
+
+    and low_mean
+    < LOW_CONTROL_THRESHOLD
+):
+
+    verdict = (
+        "PASS - Gate 3B numerical criteria satisfied"
+    )
+
+
+elif high_mean > 0:
+
+    verdict = (
+        "INCONCLUSIVE - positive exponent, "
+        "convergence criteria not met"
+    )
+
+
+else:
+
+    verdict = (
+        "FAIL - no positive high-energy exponent"
+    )
+
+
+print()
+
 print(
-    "No automatic PASS is issued. "
-    "The numerical table must be inspected."
-  )
+    "=" * 78
+)
+
 print(
-    "No automatic PASS is issued. "
-    "The numerical table must be inspected."
+    "GATE 3B VERDICT"
+)
+
+print(
+    "=" * 78
+)
+
+
+print(
+    verdict
+)
+
+
+print(
+    f"High-energy mean exponent: "
+    f"{high_mean:.6f} 1/s"
+)
+
+
+print(
+    f"Low-energy mean exponent:  "
+    f"{low_mean:.6f} 1/s"
+)
+
+
+print(
+    f"High threshold:             "
+    f"{HIGH_EXPONENT_THRESHOLD:.3f} 1/s"
+)
+
+
+print(
+    f"Low-control threshold:      "
+    f"{LOW_CONTROL_THRESHOLD:.3f} 1/s"
+)
+
+
+print()
+
+print(
+    "NOTE: PASS means the predefined Gate 3B "
+    "numerical criteria were satisfied."
+)
+
+
+print(
+    "It does not, by itself, prove asymptotic chaos."
 )
