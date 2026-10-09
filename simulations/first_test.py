@@ -4,3 +4,4 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 m = 1.0
+k = 4.0
