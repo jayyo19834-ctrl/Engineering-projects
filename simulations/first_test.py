@@ -8,3 +8,4 @@ k = 4.0
 c = 0.5
 x0 = 1.0
 v0 = 0.0
+def oscillator(t, y):
