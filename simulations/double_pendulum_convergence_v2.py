@@ -465,3 +465,7 @@ print(
     "No automatic PASS is issued. "
     "The numerical table must be inspected."
   )
+print(
+    "No automatic PASS is issued. "
+    "The numerical table must be inspected."
+)
