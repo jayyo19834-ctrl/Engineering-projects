@@ -14,10 +14,10 @@ v0 = 0.0     # initial velocity (m/s)
 # --- Model: damped harmonic oscillator ---
 def oscillator(t, y):
     x, v = y
-    return sol = solve_ivp(oscillator, [0, 20], , t_eval=np.linspace(0, 20, 2000))
+    return [-k/m*x - c/m*v, v](oscillator, [0, 20], , t_eval=np.linspace(0, 20, 2000))
 
 # --- Energy check ---
-E = 0.5*m*sol.y[1]**2 + 0.5*k*sol.y[0 0]:.4f} J")
+E = 0.5*m*sol.y[1 0]**2 + 0.5*k*sol.y[0 0]:.4f} J")
 print(f"Energy at t=20: {E[-1]:.4f} J")
 print(f"Energy decay: {(1 - E[-1 0])*100:.1f}%")
 
